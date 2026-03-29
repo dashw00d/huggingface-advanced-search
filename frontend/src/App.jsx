@@ -65,6 +65,12 @@ const DEFAULT_QUERY = '';
 const DEFAULT_SORT_BY = 'downloads';
 const DEFAULT_PIPELINE_TAG = '';
 const DEFAULT_LIBRARY = '';
+const DEFAULT_AUTHOR = '';
+const DEFAULT_NUM_PARAMS_MIN = '';
+const DEFAULT_NUM_PARAMS_MAX = '';
+const DEFAULT_GGUF_ONLY = false;
+const DEFAULT_GATED = '';
+const DEFAULT_CREATED_WITHIN = '';
 
 // --- HomePage Component ---
 function HomePage() {
@@ -77,7 +83,13 @@ function HomePage() {
     const [currentSortBy, setCurrentSortBy] = useState(() => JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY))?.currentSortBy || DEFAULT_SORT_BY);
     const [currentPipelineTag, setCurrentPipelineTag] = useState(() => JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY))?.currentPipelineTag || DEFAULT_PIPELINE_TAG);
     const [currentLibrary, setCurrentLibrary] = useState(() => JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY))?.currentLibrary || DEFAULT_LIBRARY);
-    
+    const [currentAuthor, setCurrentAuthor] = useState(() => JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY))?.currentAuthor || DEFAULT_AUTHOR);
+    const [currentNumParamsMin, setCurrentNumParamsMin] = useState(() => JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY))?.currentNumParamsMin || DEFAULT_NUM_PARAMS_MIN);
+    const [currentNumParamsMax, setCurrentNumParamsMax] = useState(() => JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY))?.currentNumParamsMax || DEFAULT_NUM_PARAMS_MAX);
+    const [currentGgufOnly, setCurrentGgufOnly] = useState(() => JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY))?.currentGgufOnly || DEFAULT_GGUF_ONLY);
+    const [currentGated, setCurrentGated] = useState(() => JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY))?.currentGated || DEFAULT_GATED);
+    const [currentCreatedWithin, setCurrentCreatedWithin] = useState(() => JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY))?.currentCreatedWithin || DEFAULT_CREATED_WITHIN);
+
     const [currentPage, setCurrentPage] = useState(() => JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY))?.currentPage || 1);
     const [hasNextPage, setHasNextPage] = useState(() => JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY))?.hasNextPage || false);
 
@@ -100,13 +112,26 @@ function HomePage() {
         });
     }, []);
 
+    const getAllCurrentFilters = useCallback(() => ({
+        query: currentQuery, sortBy: currentSortBy, pipelineTag: currentPipelineTag,
+        library: currentLibrary, author: currentAuthor, numParamsMin: currentNumParamsMin,
+        numParamsMax: currentNumParamsMax, ggufOnly: currentGgufOnly, gated: currentGated,
+        createdWithin: currentCreatedWithin,
+    }), [currentQuery, currentSortBy, currentPipelineTag, currentLibrary, currentAuthor, currentNumParamsMin, currentNumParamsMax, currentGgufOnly, currentGated, currentCreatedWithin]);
+
     const performSearch = useCallback(async (searchConfig, pageToFetch) => {
         setIsLoading(true);
-        const effectiveSearchConfig = { 
+        const effectiveSearchConfig = {
             query: searchConfig.query !== undefined ? searchConfig.query : currentQuery,
             sortBy: searchConfig.sortBy !== undefined ? searchConfig.sortBy : currentSortBy,
             pipelineTag: searchConfig.pipelineTag !== undefined ? searchConfig.pipelineTag : currentPipelineTag,
             library: searchConfig.library !== undefined ? searchConfig.library : currentLibrary,
+            author: searchConfig.author !== undefined ? searchConfig.author : currentAuthor,
+            numParamsMin: searchConfig.numParamsMin !== undefined ? searchConfig.numParamsMin : currentNumParamsMin,
+            numParamsMax: searchConfig.numParamsMax !== undefined ? searchConfig.numParamsMax : currentNumParamsMax,
+            ggufOnly: searchConfig.ggufOnly !== undefined ? searchConfig.ggufOnly : currentGgufOnly,
+            gated: searchConfig.gated !== undefined ? searchConfig.gated : currentGated,
+            createdWithin: searchConfig.createdWithin !== undefined ? searchConfig.createdWithin : currentCreatedWithin,
         };
         if (!hasSearchedAtLeastOnce) setHasSearchedAtLeastOnce(true);
         const paramsToSearch = { ...effectiveSearchConfig, page: pageToFetch, pageSize: PAGE_SIZE };
@@ -114,10 +139,37 @@ function HomePage() {
         if (paramsToSearch.query) queryParts.push(`"${paramsToSearch.query}"`); else queryParts.push("All Models");
         if (paramsToSearch.pipelineTag) queryParts.push(`Task: ${paramsToSearch.pipelineTag}`);
         if (paramsToSearch.library) queryParts.push(`Library: ${paramsToSearch.library}`);
+        if (effectiveSearchConfig.author) queryParts.push(`Author: ${effectiveSearchConfig.author}`);
+        if (effectiveSearchConfig.numParamsMin || effectiveSearchConfig.numParamsMax) {
+            const sizeStr = [effectiveSearchConfig.numParamsMin && `≥${effectiveSearchConfig.numParamsMin}`, effectiveSearchConfig.numParamsMax && `≤${effectiveSearchConfig.numParamsMax}`].filter(Boolean).join(' ');
+            queryParts.push(`Size: ${sizeStr}`);
+        }
+        if (effectiveSearchConfig.ggufOnly) queryParts.push('GGUF only');
+        if (effectiveSearchConfig.gated === 'true') queryParts.push('Gated');
+        if (effectiveSearchConfig.gated === 'false') queryParts.push('Open');
+        if (effectiveSearchConfig.createdWithin) queryParts.push(`Created: ${effectiveSearchConfig.createdWithin}`);
         const newDisplayQueryInfo = queryParts.join(' | ');
 
+        // Convert createdWithin to ISO date
+        let createdAfter = undefined;
+        if (effectiveSearchConfig.createdWithin) {
+            const now = new Date();
+            const map = { '24h': 1, '7d': 7, '30d': 30, '90d': 90, '365d': 365 };
+            const days = map[effectiveSearchConfig.createdWithin];
+            if (days) {
+                const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+                createdAfter = cutoff.toISOString();
+            }
+        }
+
+        // Build filterTags
+        let filterTags = undefined;
+        if (effectiveSearchConfig.ggufOnly) {
+            filterTags = 'gguf';
+        }
+
         try {
-            setError(null); 
+            setError(null);
             const apiParams = {
                 query: paramsToSearch.query || undefined,
                 sortBy: paramsToSearch.sortBy,
@@ -125,6 +177,12 @@ function HomePage() {
                 pageSize: paramsToSearch.pageSize,
                 pipelineTag: paramsToSearch.pipelineTag || undefined,
                 library: paramsToSearch.library || undefined,
+                author: effectiveSearchConfig.author || undefined,
+                filterTags: filterTags,
+                gated: effectiveSearchConfig.gated || undefined,
+                numParametersMin: effectiveSearchConfig.numParamsMin || undefined,
+                numParametersMax: effectiveSearchConfig.numParamsMax || undefined,
+                createdAfter: createdAfter,
             };
             const data = await searchModels(apiParams);
             const newModels = data.results || [];
@@ -137,7 +195,13 @@ function HomePage() {
                 currentSortBy: effectiveSearchConfig.sortBy, currentPipelineTag: effectiveSearchConfig.pipelineTag,
                 currentLibrary: effectiveSearchConfig.library, currentPage: pageToFetch,
                 hasNextPage: newHasNextPage, displayQueryInfo: newDisplayQueryInfo,
-                hasSearchedAtLeastOnce: true, error: null
+                hasSearchedAtLeastOnce: true, error: null,
+                currentAuthor: effectiveSearchConfig.author,
+                currentNumParamsMin: effectiveSearchConfig.numParamsMin,
+                currentNumParamsMax: effectiveSearchConfig.numParamsMax,
+                currentGgufOnly: effectiveSearchConfig.ggufOnly,
+                currentGated: effectiveSearchConfig.gated,
+                currentCreatedWithin: effectiveSearchConfig.createdWithin,
             };
             sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(stateToSave));
         } catch (err) {
@@ -149,47 +213,80 @@ function HomePage() {
                 currentSortBy: effectiveSearchConfig.sortBy, currentPipelineTag: effectiveSearchConfig.pipelineTag,
                 currentLibrary: effectiveSearchConfig.library, currentPage: pageToFetch,
                 hasNextPage: false, displayQueryInfo: newDisplayQueryInfo,
-                hasSearchedAtLeastOnce: true, error: errorMsg
+                hasSearchedAtLeastOnce: true, error: errorMsg,
+                currentAuthor: effectiveSearchConfig.author,
+                currentNumParamsMin: effectiveSearchConfig.numParamsMin,
+                currentNumParamsMax: effectiveSearchConfig.numParamsMax,
+                currentGgufOnly: effectiveSearchConfig.ggufOnly,
+                currentGated: effectiveSearchConfig.gated,
+                currentCreatedWithin: effectiveSearchConfig.createdWithin,
             };
             sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(stateToSaveOnError));
         } finally { setIsLoading(false); }
-    }, [currentQuery, currentSortBy, currentPipelineTag, currentLibrary, hasSearchedAtLeastOnce]);
+    }, [currentQuery, currentSortBy, currentPipelineTag, currentLibrary, currentAuthor, currentNumParamsMin, currentNumParamsMax, currentGgufOnly, currentGated, currentCreatedWithin, hasSearchedAtLeastOnce]);
 
-    const handleSearchSubmit = useCallback((searchData) => { 
-        const newQuery = searchData.query || '';
-        performSearch({ query: newQuery, sortBy: currentSortBy, pipelineTag: currentPipelineTag, library: currentLibrary }, 1);
-    }, [currentSortBy, currentPipelineTag, currentLibrary, performSearch]);
+    const handleSearchSubmit = useCallback((searchData) => {
+        performSearch({ ...getAllCurrentFilters(), query: searchData.query || '' }, 1);
+    }, [getAllCurrentFilters, performSearch]);
 
     const handleSortByChange = useCallback((newSortBy) => {
-        performSearch({ query: currentQuery, sortBy: newSortBy, pipelineTag: currentPipelineTag, library: currentLibrary }, 1);
-    }, [currentQuery, currentPipelineTag, currentLibrary, performSearch]);
+        performSearch({ ...getAllCurrentFilters(), sortBy: newSortBy }, 1);
+    }, [getAllCurrentFilters, performSearch]);
 
     const handlePipelineTagChange = useCallback((newPipelineTag) => {
-        performSearch({ query: currentQuery, sortBy: currentSortBy, pipelineTag: newPipelineTag, library: currentLibrary }, 1);
-    }, [currentQuery, currentSortBy, currentLibrary, performSearch]);
+        performSearch({ ...getAllCurrentFilters(), pipelineTag: newPipelineTag }, 1);
+    }, [getAllCurrentFilters, performSearch]);
 
     const handleLibraryChange = useCallback((newLibrary) => {
-        performSearch({ query: currentQuery, sortBy: currentSortBy, pipelineTag: currentPipelineTag, library: newLibrary }, 1);
-    }, [currentQuery, currentSortBy, currentPipelineTag, performSearch]);
+        performSearch({ ...getAllCurrentFilters(), library: newLibrary }, 1);
+    }, [getAllCurrentFilters, performSearch]);
+
+    const handleAuthorChange = useCallback((newAuthor) => {
+        setCurrentAuthor(newAuthor);
+        // Don't auto-search on every keystroke - user will press Search to apply
+    }, []);
+
+    const handleNumParamsMinChange = useCallback((val) => {
+        performSearch({ ...getAllCurrentFilters(), numParamsMin: val }, 1);
+    }, [getAllCurrentFilters, performSearch]);
+
+    const handleNumParamsMaxChange = useCallback((val) => {
+        performSearch({ ...getAllCurrentFilters(), numParamsMax: val }, 1);
+    }, [getAllCurrentFilters, performSearch]);
+
+    const handleGgufOnlyChange = useCallback((checked) => {
+        performSearch({ ...getAllCurrentFilters(), ggufOnly: checked }, 1);
+    }, [getAllCurrentFilters, performSearch]);
+
+    const handleGatedChange = useCallback((val) => {
+        performSearch({ ...getAllCurrentFilters(), gated: val }, 1);
+    }, [getAllCurrentFilters, performSearch]);
+
+    const handleCreatedWithinChange = useCallback((val) => {
+        performSearch({ ...getAllCurrentFilters(), createdWithin: val }, 1);
+    }, [getAllCurrentFilters, performSearch]);
     
     const goToNextPage = useCallback(() => {
         if (hasNextPage && !isLoading) {
-            performSearch({ query: currentQuery, sortBy: currentSortBy, pipelineTag: currentPipelineTag, library: currentLibrary }, currentPage + 1);
+            performSearch(getAllCurrentFilters(), currentPage + 1);
         }
-    }, [hasNextPage, isLoading, currentPage, currentQuery, currentSortBy, currentPipelineTag, currentLibrary, performSearch]);
+    }, [hasNextPage, isLoading, currentPage, getAllCurrentFilters, performSearch]);
 
     const goToPreviousPage = useCallback(() => {
         if (currentPage > 1 && !isLoading) {
-            performSearch({ query: currentQuery, sortBy: currentSortBy, pipelineTag: currentPipelineTag, library: currentLibrary }, currentPage - 1);
+            performSearch(getAllCurrentFilters(), currentPage - 1);
         }
-    }, [isLoading, currentPage, currentQuery, currentSortBy, currentPipelineTag, currentLibrary, performSearch]);
+    }, [isLoading, currentPage, getAllCurrentFilters, performSearch]);
 
     const handleClearFilters = useCallback(() => {
         setCurrentQuery(DEFAULT_QUERY); setCurrentSortBy(DEFAULT_SORT_BY);
         setCurrentPipelineTag(DEFAULT_PIPELINE_TAG); setCurrentLibrary(DEFAULT_LIBRARY);
+        setCurrentAuthor(DEFAULT_AUTHOR); setCurrentNumParamsMin(DEFAULT_NUM_PARAMS_MIN);
+        setCurrentNumParamsMax(DEFAULT_NUM_PARAMS_MAX); setCurrentGgufOnly(DEFAULT_GGUF_ONLY);
+        setCurrentGated(DEFAULT_GATED); setCurrentCreatedWithin(DEFAULT_CREATED_WITHIN);
         setModels([]); setHasSearchedAtLeastOnce(false); setDisplayQueryInfo('');
         setCurrentPage(1); setHasNextPage(false); setError(null);
-        setSelectedForComparison([]); 
+        setSelectedForComparison([]);
         sessionStorage.removeItem(SESSION_STORAGE_KEY);
     }, []);
 
@@ -220,6 +317,12 @@ function HomePage() {
                 currentSortBy={currentSortBy} onSortByChange={handleSortByChange}
                 currentPipelineTag={currentPipelineTag} onPipelineTagChange={handlePipelineTagChange}
                 currentLibrary={currentLibrary} onLibraryChange={handleLibraryChange}
+                currentAuthor={currentAuthor} onAuthorChange={handleAuthorChange}
+                currentNumParamsMin={currentNumParamsMin} onNumParamsMinChange={handleNumParamsMinChange}
+                currentNumParamsMax={currentNumParamsMax} onNumParamsMaxChange={handleNumParamsMaxChange}
+                currentGgufOnly={currentGgufOnly} onGgufOnlyChange={handleGgufOnlyChange}
+                currentGated={currentGated} onGatedChange={handleGatedChange}
+                currentCreatedWithin={currentCreatedWithin} onCreatedWithinChange={handleCreatedWithinChange}
                 onClearFilters={handleClearFilters}
             />
             {selectedForComparison.length >= 2 && (
