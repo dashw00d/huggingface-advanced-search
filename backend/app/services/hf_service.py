@@ -57,6 +57,11 @@ def search_models_on_hub_paginated(
     page_size: int = 20,    # New: items per page
     pipeline_tag: Optional[str] = None,
     library: Optional[str] = None,
+    author: Optional[str] = None,
+    filter_tags: Optional[List[str]] = None,
+    gated: Optional[bool] = None,
+    num_parameters: Optional[str] = None,
+    created_after: Optional[str] = None,  # ISO date string for client-side filtering
 ) -> Tuple[List[HFModelSearchResultItem], int, bool]: # Results, total_items_on_this_page_and_before, has_more
     
     processed_query = query
@@ -83,7 +88,7 @@ def search_models_on_hub_paginated(
             f"page={page}, page_size={page_size}, pipeline_tag='{derived_pipeline_tag}', library='{library}'"
         )
         
-        valid_sort_fields = ["downloads", "likes", "lastModified"]
+        valid_sort_fields = ["downloads", "likes", "lastModified", "trending_score", "created_at"]
         if sort_by not in valid_sort_fields:
             sort_by = "downloads"
 
@@ -99,6 +104,10 @@ def search_models_on_hub_paginated(
             full=True, # Still need full info for each item
             pipeline_tag=derived_pipeline_tag,
             library=library,
+            author=author,
+            filter=filter_tags if filter_tags else None,
+            gated=gated,
+            num_parameters=num_parameters,
             # No 'limit' here, we iterate and stop
         )
 
@@ -106,13 +115,20 @@ def search_models_on_hub_paginated(
         items_collected_for_page = 0
         has_more_items_after_this_page = False
 
-        for model_idx, model in enumerate(models_iterator):
-            if current_index >= end_index: # We have enough for this page and one more to check for has_more
-                has_more_items_after_this_page = True # If we hit this, there was at least one more model
-                break 
-            
+        for model in models_iterator:
+            # Client-side date filtering
+            if created_after:
+                from datetime import datetime
+                cutoff = datetime.fromisoformat(created_after)
+                model_date = model.created_at or model.lastModified
+                if model_date and model_date.replace(tzinfo=None) < cutoff:
+                    continue
+
+            if current_index >= end_index:
+                has_more_items_after_this_page = True
+                break
+
             if current_index >= start_index:
-                # This model falls within the current page
                 has_gguf_file = False
                 if model.siblings:
                     for sibling in model.siblings:
@@ -127,10 +143,8 @@ def search_models_on_hub_paginated(
                 }
                 paged_results.append(HFModelSearchResultItem.model_validate(item_data))
                 items_collected_for_page += 1
-            
+
             current_index += 1
-            # Optimization: if we have filled the page and there are no more items from iterator, has_more is false
-            # This is implicitly handled by the loop breaking condition and has_more_items_after_this_page flag
 
         total_items_processed_up_to_this_page = current_index # if has_more, this is end_index + 1, else total models found
         if not has_more_items_after_this_page and current_index < end_index: # If iterator exhausted before filling the page or reaching end_index
