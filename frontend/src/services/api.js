@@ -25,21 +25,22 @@ export const searchModels = async (params = {}) => {
         const queryParams = new URLSearchParams();
         if (params.query) queryParams.append('query', params.query);
         if (params.sortBy) queryParams.append('sort_by', params.sortBy);
-        
         if (params.page) queryParams.append('page', params.page);
         if (params.pageSize) queryParams.append('page_size', params.pageSize);
-
         if (params.pipelineTag) queryParams.append('pipeline_tag', params.pipelineTag);
         if (params.library) queryParams.append('library', params.library);
+        if (params.author) queryParams.append('author', params.author);
+        if (params.filterTags) queryParams.append('filter_tags', params.filterTags);
+        if (params.gated !== undefined && params.gated !== null && params.gated !== '') queryParams.append('gated', params.gated);
+        if (params.numParametersMin) queryParams.append('num_parameters_min', params.numParametersMin);
+        if (params.numParametersMax) queryParams.append('num_parameters_max', params.numParametersMax);
+        if (params.createdAfter) queryParams.append('created_after', params.createdAfter);
 
         const requestUrl = `${API_BASE_URL}/search/models`;
-        console.log(`[api.js] Making API GET request to: ${requestUrl} with params: ${queryParams.toString()}`); // Confirm this log
-
         const response = await axios.get(requestUrl, { params: queryParams });
-        console.log("[api.js] API paginated searchModels response:", response.data); // Confirm this log
-        return response.data; 
+        return response.data;
     } catch (error) {
-        console.error("[api.js] Error searching models (paginated):", error.response ? error.response.data : error.message, error.config ? {config: error.config} : ''); // Confirm this log
+        console.error("[api.js] Error searching models:", error.response ? error.response.data : error.message);
         throw error;
     }
 };
