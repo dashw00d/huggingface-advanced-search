@@ -189,7 +189,18 @@ function HomePage() {
             const newHasNextPage = data.has_more || false;
             setModels(newModels); setHasNextPage(newHasNextPage);
             setCurrentPage(pageToFetch); setDisplayQueryInfo(newDisplayQueryInfo);
-            setSelectedForComparison([]); 
+            setSelectedForComparison([]);
+            // Sync all filter state so getAllCurrentFilters() returns correct values
+            setCurrentQuery(effectiveSearchConfig.query);
+            setCurrentSortBy(effectiveSearchConfig.sortBy);
+            setCurrentPipelineTag(effectiveSearchConfig.pipelineTag);
+            setCurrentLibrary(effectiveSearchConfig.library);
+            setCurrentAuthor(effectiveSearchConfig.author);
+            setCurrentNumParamsMin(effectiveSearchConfig.numParamsMin);
+            setCurrentNumParamsMax(effectiveSearchConfig.numParamsMax);
+            setCurrentGgufOnly(effectiveSearchConfig.ggufOnly);
+            setCurrentGated(effectiveSearchConfig.gated);
+            setCurrentCreatedWithin(effectiveSearchConfig.createdWithin);
             const stateToSave = {
                 models: newModels, currentQuery: effectiveSearchConfig.query,
                 currentSortBy: effectiveSearchConfig.sortBy, currentPipelineTag: effectiveSearchConfig.pipelineTag,
