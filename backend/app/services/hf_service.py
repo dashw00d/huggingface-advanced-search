@@ -97,18 +97,23 @@ def search_models_on_hub_paginated(
         end_index = start_index + page_size
 
         paged_results: List[HFModelSearchResultItem] = []
-        models_iterator = list_models( # This returns a generator
+
+        # Build combined filter list (library + any extra filter_tags)
+        combined_filters = []
+        if library:
+            combined_filters.append(library)
+        if filter_tags:
+            combined_filters.extend(filter_tags)
+
+        models_iterator = list_models(
             search=processed_query if processed_query else None,
             sort=sort_by,
-            direction=-1,
-            full=True, # Still need full info for each item
+            full=True,
             pipeline_tag=derived_pipeline_tag,
-            library=library,
+            filter=combined_filters if combined_filters else None,
             author=author,
-            filter=filter_tags if filter_tags else None,
             gated=gated,
             num_parameters=num_parameters,
-            # No 'limit' here, we iterate and stop
         )
 
         current_index = 0
