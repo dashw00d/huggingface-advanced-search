@@ -18,11 +18,17 @@ router = APIRouter()
 )
 async def search_hf_models_paginated(
     query: Optional[str] = Query(None, description="Search query string."),
-    sort_by: str = Query("downloads", description="Sort by ('downloads', 'likes', 'lastModified')."),
+    sort_by: str = Query("downloads", description="Sort by ('downloads', 'likes', 'lastModified', 'trending_score', 'created_at')."),
     page: int = Query(1, ge=1, description="Page number (1-indexed)."),
     page_size: int = Query(20, ge=1, le=50, description="Items per page (min 1, max 50)."), # Limit page_size
     pipeline_tag: Optional[str] = Query(None, description="Filter by pipeline tag."),
-    library: Optional[str] = Query(None, description="Filter by library.")
+    library: Optional[str] = Query(None, description="Filter by library."),
+    author: Optional[str] = Query(None, description="Filter by author/organization."),
+    filter_tags: Optional[str] = Query(None, description="Comma-separated filter tags (e.g., 'gguf' for GGUF-only)."),
+    gated: Optional[bool] = Query(None, description="Filter by gated status (true/false)."),
+    num_parameters_min: Optional[str] = Query(None, description="Min model parameters (e.g., '1B', '500M')."),
+    num_parameters_max: Optional[str] = Query(None, description="Max model parameters (e.g., '40B', '70B')."),
+    created_after: Optional[str] = Query(None, description="ISO date string. Only return models created after this date."),
 ):
     """
     Endpoint to search for models on the Hugging Face Hub.
@@ -31,9 +37,26 @@ async def search_hf_models_paginated(
     try:
         logger.info(
             f"Received paginated search: query='{query}', sort='{sort_by}', page={page}, page_size={page_size}, "
-            f"task='{pipeline_tag}', lib='{library}'"
+            f"task='{pipeline_tag}', lib='{library}', author='{author}', filter_tags='{filter_tags}', "
+            f"gated={gated}, num_parameters_min='{num_parameters_min}', num_parameters_max='{num_parameters_max}', "
+            f"created_after='{created_after}'"
         )
-        
+
+        # Build num_parameters range string
+        num_parameters = None
+        if num_parameters_min or num_parameters_max:
+            parts = []
+            if num_parameters_min:
+                parts.append(f"min:{num_parameters_min}")
+            if num_parameters_max:
+                parts.append(f"max:{num_parameters_max}")
+            num_parameters = ",".join(parts)
+
+        # Parse filter_tags from comma-separated string to list
+        parsed_filter_tags = None
+        if filter_tags:
+            parsed_filter_tags = [t.strip() for t in filter_tags.split(",") if t.strip()]
+
         # hf_service.search_models_on_hub_paginated is synchronous due to the loop over the generator
         results, _, has_more = await run_in_threadpool( # _ for total_items_processed
             hf_service.search_models_on_hub_paginated,
@@ -42,7 +65,12 @@ async def search_hf_models_paginated(
             page=page,
             page_size=page_size,
             pipeline_tag=pipeline_tag,
-            library=library
+            library=library,
+            author=author,
+            filter_tags=parsed_filter_tags,
+            gated=gated,
+            num_parameters=num_parameters,
+            created_after=created_after,
         )
         # `list_models` can be blocking, so run it in a threadpool
         # to avoid blocking FastAPI's event loop for synchronous I/O bound tasks.
