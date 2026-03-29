@@ -35,12 +35,16 @@ app = FastAPI(
 # Use os.getenv to fetch from environment variables for flexibility
 FRONTEND_DEV_URL_REACT = os.getenv("FRONTEND_DEV_URL_REACT", "http://localhost:3000")
 FRONTEND_DEV_URL_VITE = os.getenv("FRONTEND_DEV_URL_VITE", "http://localhost:5173") # Common Vite port
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "")
 
 origins = [
     FRONTEND_DEV_URL_REACT,
     FRONTEND_DEV_URL_VITE,
-    # Add any other origins you might need (e.g., your deployed frontend URL)
 ]
+
+# Add any extra origins from environment (comma-separated)
+if ALLOWED_ORIGINS:
+    origins.extend([o.strip() for o in ALLOWED_ORIGINS.split(",") if o.strip()])
 
 app.add_middleware(
     CORSMiddleware,
