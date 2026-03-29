@@ -123,11 +123,17 @@ def search_models_on_hub_paginated(
         for model in models_iterator:
             # Client-side date filtering
             if created_after:
-                from datetime import datetime
-                cutoff = datetime.fromisoformat(created_after)
+                from datetime import datetime, timezone
+                cutoff = datetime.fromisoformat(created_after.replace("Z", "+00:00"))
                 model_date = model.created_at or model.lastModified
-                if model_date and model_date.replace(tzinfo=None) < cutoff:
-                    continue
+                if model_date:
+                    # Ensure both are tz-aware for comparison
+                    if model_date.tzinfo is None:
+                        model_date = model_date.replace(tzinfo=timezone.utc)
+                    if cutoff.tzinfo is None:
+                        cutoff = cutoff.replace(tzinfo=timezone.utc)
+                    if model_date < cutoff:
+                        continue
 
             if current_index >= end_index:
                 has_more_items_after_this_page = True
